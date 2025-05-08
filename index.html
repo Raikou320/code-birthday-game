@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rai Game 1</title>
+    <script src="https://raikou320.github.io/rai.js/rai.sound.min.js"></script>
+    <script src="https://raikou320.github.io/rai.js/rai.min.js"></script>
+  </head>
+  <body>
+    <style>
+      body {
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0;
+        padding: 0;
+      }
+      canvas {
+        width: min(80vw, 80vh, 1024px);
+        height: min(80vw, 80vh, 1024px);
+        border: 1px solid black;
+      }
+    </style>
+    <script>
+      const images = {
+        coin: null,
+        player: null,
+        ground: null,
+        endStar: null,
+      };
+      const sounds = {
+        coin: null,
+        jump: null,
+        victory: null,
+        backgroundMusic: null,
+      };
+      class Camera {
+        constructor(x, y, width, height, target, mapWidth, mapHeight) {
+          this.x = x;
+          this.y = y;
+          this.width = width;
+          this.height = height;
+          this.target = target;
+          this.mapWidth = mapWidth;
+          this.mapHeight = mapHeight;
+        }
+        follow() {
+          this.x = this.target.x - this.width / 2;
+          this.y = this.target.y - this.height / 2;
+          this.x = Math.max(0, Math.min(this.x, this.mapWidth - this.width));
+          this.y = Math.max(0, Math.min(this.y, this.mapHeight - this.height));
+          translate(-this.x, -this.y);
+        }
+      }
+      class Platform {
+        constructor(x, y, width, height) {
+          this.x = x;
+          this.y = y;
+          this.width = width;
+          this.height = height;
+        }
+        draw() {
+          fill("#8B4513");
+          rect(this.x, this.y, this.width, this.height);
+        }
+      }
+      class HorizontalMovingPlatform extends Platform {
+        constructor(x, y, width, height, minX, maxX) {
+          super(x, y, width, height);
+          this.maxX = maxX;
+          this.minX = minX;
+          this.sx = 2;
+        }
+        draw() {
+          super.draw();
+        }
+        move() {
+          this.x += this.sx;
+          this.x > this.maxX - this.width || this.x < this.minX
+            ? (this.sx *= -1)
+            : null;
+        }
+      }
+      class VerticalMovingPlatform extends Platform {
+        constructor(x, y, width, height, minY, maxY) {
+          super(x, y, width, height);
+          this.maxY = maxY;
+          this.minY = minY;
+          this.sy = 2;
+        }
+        draw() {
+          super.draw();
+        }
+        move() {
+          this.y += this.sy;
+          this.y > this.maxY - this.height || this.y < this.minY
+            ? (this.sy *= -1)
+            : null;
+        }
+      }
+      class Coin {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.width = 32;
+          this.height = 32;
+        }
+        draw() {
+          image(images.coin, this.x, this.y, this.width, this.height);
+        }
+      }
+      const global =
+        typeof window !== "undefined"
+          ? window
+          : typeof globalThis !== "undefined"
+          ? globalThis
+          : typeof self !== "undefined"
+          ? self
+          : this;
+      const keys = {
+        JUMP_KEY: null,
+        LEFT_KEY: null,
+        RIGHT_KEY: null,
+      };
+      let isMusicMuted =
+        localStorage.getItem("1-year-game-music-muted") || false;
+      let areSoundsMuted =
+        localStorage.getItem("1-year-game-sounds-muted") || false;
+      const coinsLv1 = [];
+      const platformsLv1 = [];
+      const coinsLv2 = [];
+      const platformsLv2 = [];
+      const playerLv1 = {
+        startX: 0,
+        startY: 1024 - 64,
+        x: 0,
+        y: 1024 - 64,
+        width: 48,
+        height: 64,
+        isGrounded: true,
+        vx: 0,
+        vy: 0,
+        minX: 0,
+        minY: 0,
+        maxX: 1280 - 48,
+        maxY: 1024 - 64,
+        score: 0,
+      };
+      const playerLv2 = {
+        startX: 0,
+        startY: 1024 - 64,
+        x: 0,
+        y: 1024 - 64,
+        width: 48,
+        height: 64,
+        isGrounded: true,
+        vx: 0,
+        vy: 0,
+        minX: 0,
+        minY: 0,
+        maxX: 2560 - 48,
+        maxY: 1024 - 64,
+        score: 0,
+      };
+      const menuToGameButton = {
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 50,
+      };
+      const gameToLevel1Button = {
+        x: 32,
+        y: 0,
+        width: 64,
+        height: 64,
+      };
+      const gameToLevel2Button = {
+        x: 128,
+        y: 0,
+        width: 64,
+        height: 64,
+      };
+      const endStarLv1 = {
+        x: 1220,
+        y: 320,
+        width: 64,
+        height: 64,
+      };
+      const endStarLv2 = {
+        x: 2480,
+        y: 550,
+        width: 64,
+        height: 64,
+      };
+      let scene = "menu";
+      let previousScene = null;
+      const mouse = { x: 0, y: 0, width: 1, height: 1 };
+      function drawMenu() {
+        background(220);
+        fill(0);
+        fontFamily("Consolas, monospace");
+        fontSize("32px");
+        text("Menu", width / 2 - 45, height / 2 - 70);
+        stroke(2);
+        fill(225, 32, 45, 123);
+        rect(
+          menuToGameButton.x,
+          menuToGameButton.y,
+          menuToGameButton.width,
+          menuToGameButton.height
+        );
+        fill(0);
+        text("Jouer", width / 2 - 45, menuToGameButton.y + 35);
+      }
+      function raiMousePressed() {
+        if (scene === "menu") {
+          if (aabb(mouse, menuToGameButton)) scene = "game";
+        } else if (scene === "game") {
+          if (aabb(mouse, gameToLevel1Button)) scene = "level-1";
+          if (aabb(mouse, gameToLevel2Button)) scene = "level-2";
+        }
+      }
+      function drawGame() {
+        fontSize("32px");
+        background("#f0f0f0");
+        fill(225, 32, 45, 123);
+        rect(
+          gameToLevel1Button.x,
+          gameToLevel1Button.y,
+          gameToLevel1Button.width,
+          gameToLevel1Button.height
+        );
+        text("1", gameToLevel1Button.x + 24, gameToLevel1Button.y + 40);
+        if (localStorage.getItem("1-year-game-level-2-unlocked")) {
+          rect(
+            gameToLevel2Button.x,
+            gameToLevel2Button.y,
+            gameToLevel2Button.width,
+            gameToLevel2Button.height
+          );
+          text("2", gameToLevel2Button.x + 24, gameToLevel2Button.y + 40);
+        }
+      }
+      function drawLevel1() {
+          playAudio(sounds.backgroundMusic)
+          background("#f0f0f0");
+        const camera = new Camera(0, 0, width, height, playerLv1, 1280, 1024);
+        camera.follow();
+        image(
+          images.endStar,
+          endStarLv1.x,
+          endStarLv1.y,
+          endStarLv1.width,
+          endStarLv1.height
+        );
+        image(images.coin, camera.x, camera.y, 64, 64);
+        fontSize("32px");
+        fontFamily("'Consolas', monospace");
+        fill(0);
+        text(`${playerLv1.score}`, camera.x + 22, camera.y + 42);
+        image(images.ground, 0, 992, 1280, 32);
+        image(
+          images.player,
+          playerLv1.x,
+          playerLv1.y,
+          playerLv1.width,
+          playerLv1.height
+        );
+        if (isKeyDown(keys.JUMP_KEY) && playerLv1.isGrounded) {
+          playerLv1.isGrounded = false;
+          playerLv1.vy = -20;
+          playAudio(sounds.jump);
+        }
+        if (isKeyDown(keys.LEFT_KEY) && playerLv1.x > playerLv1.minX) {
+          playerLv1.vx = -3.5;
+        } else if (isKeyDown(keys.RIGHT_KEY) && playerLv1.x < playerLv1.maxX) {
+          playerLv1.vx = 3.5;
+        }
+        if (!playerLv1.isGrounded) playerLv1.vy += 1;
+        if (playerLv1.y > playerLv1.maxY) {
+          playerLv1.isGrounded = true;
+          playerLv1.y = playerLv1.maxY;
+        }
+        playerLv1.x += playerLv1.vx;
+        playerLv1.y += playerLv1.vy;
+        playerLv1.vx *= 0.8;
+        playerLv1.vy *= 0.7;
+        if (aabb(endStarLv1, playerLv1)) {
+          playAudio(sounds.victory);
+          scene = "game";
+          let coins =
+            JSON.parse(localStorage.getItem("1-year-game-coins")) || 0;
+          coins += playerLv1.score;
+          localStorage.setItem("1-year-game-coins", coins);
+          playerLv1.score = 0;
+          localStorage.setItem("1-year-game-level-2-unlocked", true);
+          playerLv1.x = playerLv1.startX;
+          playerLv1.y = playerLv1.startY;
+        }
+        coinsLv1.forEach((coin) => {
+          coin.draw();
+          if (aabb(coin, playerLv1)) {
+            playAudio(sounds.coin);
+            playerLv1.score++;
+            coinsLv1.splice(coinsLv1.indexOf(coin), 1);
+          }
+        });
+        let isOnPlatform = false;
+        platformsLv1.forEach((platform) => {
+          platform.draw();
+          if (aabb(platform, playerLv1)) {
+            playerLv1.y = platform.y - playerLv1.height;
+            isOnPlatform = true;
+          }
+        });
+        if (playerLv1.y >= playerLv1.maxY) {
+          playerLv1.y = playerLv1.maxY;
+          playerLv1.isGrounded = true;
+        } else {
+          playerLv1.isGrounded = isOnPlatform;
+        }
+      }
+      function drawLevel2() {
+        playAudio(sounds.backgroundMusic)
+        background("#f0f0f0");
+        const camera = new Camera(0, 0, width, height, playerLv2, 2560, 1024);
+        camera.follow();
+        image(
+          images.endStar,
+          endStarLv2.x,
+          endStarLv2.y,
+          endStarLv2.width,
+          endStarLv2.height
+        );
+        image(images.coin, camera.x, camera.y, 64, 64);
+        fontSize("32px");
+        fontFamily("'Consolas', monospace");
+        fill(0);
+        text(`${playerLv2.score}`, camera.x + 22, camera.y + 42);
+        image(images.ground, 0, 992, 2560, 32);
+        image(
+          images.player,
+          playerLv2.x,
+          playerLv2.y,
+          playerLv2.width,
+          playerLv2.height
+        );
+        if (isKeyDown(keys.JUMP_KEY) && playerLv2.isGrounded) {
+          playerLv2.isGrounded = false;
+          playerLv2.vy = -35;
+          playAudio(sounds.jump);
+        }
+        if (isKeyDown(keys.LEFT_KEY) && playerLv2.x > playerLv2.minX) {
+          playerLv2.vx = -3.5;
+        } else if (isKeyDown(keys.RIGHT_KEY) && playerLv2.x < playerLv2.maxX) {
+          playerLv2.vx = 3.5;
+        }
+        if (!playerLv2.isGrounded) playerLv2.vy += 1;
+        if (playerLv2.y > playerLv2.maxY) {
+          playerLv2.isGrounded = true;
+          playerLv2.y = playerLv2.maxY;
+        }
+        playerLv2.x += playerLv2.vx;
+        playerLv2.y += playerLv2.vy;
+        playerLv2.vx *= 0.8;
+        playerLv2.vy *= 0.7;
+        if (aabb(endStarLv2, playerLv2)) {
+          playAudio(sounds.victory);
+          scene = "game";
+          let coins =
+            JSON.parse(localStorage.getItem("1-year-game-coins")) || 0;
+          coins += playerLv2.score;
+          localStorage.setItem("1-year-game-coins", coins);
+          playerLv2.score = 0;
+          playerLv2.x = playerLv2.startX;
+          playerLv2.y = playerLv2.startY;
+        }
+        coinsLv2.forEach((coin) => {
+          coin.draw();
+          if (aabb(coin, playerLv2)) {
+            playAudio(sounds.coin);
+            playerLv2.score++;
+            coinsLv2.splice(coinsLv2.indexOf(coin), 1);
+          }
+        });
+        let isOnPlatform = false;
+        platformsLv2.forEach((platform) => {
+          platform.draw();
+          if (aabb(platform, playerLv2)) {
+            playerLv2.y = platform.y - playerLv2.height;
+            isOnPlatform = true;
+          }
+        });
+        if (playerLv2.y >= playerLv2.maxY) {
+          playerLv2.y = playerLv2.maxY;
+          playerLv2.isGrounded = true;
+        } else {
+          playerLv2.isGrounded = isOnPlatform;
+        }
+        platformsLv2.forEach((platform) => {
+          if (platform instanceof HorizontalMovingPlatform) {
+            platform.move();
+          } else if (platform instanceof VerticalMovingPlatform) {
+            platform.move();
+          }
+        });
+      }
+      function raiLoad() {
+        images.player = loadImage("player.svg");
+        images.coin = loadImage("coin.svg");
+        images.ground = loadImage("ground.svg");
+        images.endStar = loadImage("end_star.svg");
+        sounds.coin = loadAudio("coin.wav");
+        sounds.jump = loadAudio("jump.wav");
+        sounds.victory = loadAudio("victory.wav");
+        sounds.backgroundMusic = loadAudio("background_music.mp3");
+      }
+      function raiSetup() {
+        createCanvas(512, 512);
+        background(220);
+        keys.JUMP_KEY = UP_ARROW;
+        keys.LEFT_KEY = LEFT_ARROW;
+        keys.RIGHT_KEY = RIGHT_ARROW;
+        menuToGameButton.x = width / 2 - 100;
+        menuToGameButton.y = height / 2 - 25;
+        gameToLevel1Button.y = height / 2 - 32;
+        gameToLevel2Button.y = height / 2 - 32;
+        platformsLv1.push(
+          new Platform(50, 970, 60, 15),
+          new Platform(240, 930, 45, 10),
+          new Platform(400, 850, 60, 15),
+          new Platform(600, 800, 60, 15),
+          new Platform(200, 865, 20, 10),
+          new Platform(750, 730, 10, 50),
+          new Platform(835, 650, 25, 75),
+          new Platform(900, 600, 60, 15),
+          new Platform(1065, 420, 60, 145)
+        );
+        coinsLv1.push(
+          new Coin(100, 900),
+          new Coin(200, 920),
+          new Coin(356, 836),
+          new Coin(500, 900),
+          new Coin(550, 850),
+          new Coin(1200, 450)
+        );
+        platformsLv2.push(
+          new Platform(100, 970, 100, 15),
+          new Platform(350, 920, 60, 15),
+          new Platform(600, 880, 60, 15),
+          new Platform(850, 840, 60, 15),
+          new Platform(1100, 800, 60, 15),
+          new Platform(1350, 770, 60, 15),
+          new Platform(1600, 740, 60, 15),
+          new Platform(1850, 700, 60, 15),
+          new Platform(2200, 670, 60, 15),
+          new HorizontalMovingPlatform(1200, 740, 150, 15, 1200, 1500),
+          new HorizontalMovingPlatform(1300, 660, 150, 15, 1300, 2150),
+          new VerticalMovingPlatform(2200, 600, 100, 15, 200, 700)
+        );
+        coinsLv2.push(
+          new Coin(300, 850),
+          new Coin(550, 790),
+          new Coin(850, 690),
+          new Coin(1200, 700),
+          new Coin(1600, 740),
+          new Coin(2000, 800),
+          new Coin(2200, 650),
+          new Coin(2300, 580),
+          new Coin(2400, 500),
+          new Coin(2500, 420)
+        );
+      }
+      function raiDraw() {
+        const scaleX = width / canvas.clientWidth;
+        const scaleY = height / canvas.clientHeight;
+        mouse.x = mouseX * scaleX;
+        mouse.y = mouseY * scaleY;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (scene !== previousScene) {
+          if ((scene === "level-1" || scene === "level-2") && !isMusicMuted) {
+            if (sounds.backgroundMusic.paused) {
+              sounds.backgroundMusic.currentTime = 0;
+              playAudio(sounds.backgroundMusic);
+            }
+          } else {
+            sounds.backgroundMusic.pause();
+          }
+          previousScene = scene;
+        }
+        switch (scene) {
+          case "menu":
+            drawMenu();
+            break;
+          case "game":
+            drawGame();
+            break;
+          case "level-1":
+            drawLevel1();
+            break;
+          case "level-2":
+            drawLevel2();
+            break;
+        }
+      }
+    </script>
+  </body>
+</html>
